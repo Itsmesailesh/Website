@@ -3,139 +3,186 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Snake Game</title>
+  <title>Tetris Game</title>
   <style>
     body {
+      margin: 0;
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
-      margin: 0;
-      background-color: #222;
-      color: #fff;
+      background: linear-gradient(45deg, #ff9a9e, #fad0c4);
       font-family: Arial, sans-serif;
+      color: #333;
     }
+
     canvas {
-      border: 2px solid #fff;
+      background-color: #fff;
+      border: 3px solid #ff6f91;
+      display: block;
+    }
+
+    .credits {
+      position: absolute;
+      bottom: 20px;
+      text-align: center;
+      color: #fff;
+      font-size: 14px;
+    }
+
+    .credits a {
+      color: #fff;
+      text-decoration: none;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas"></canvas>
+  <canvas id="tetrisCanvas"></canvas>
+  <div class="credits">
+    <p>Made by Sailesh Maharjan</p>
+    <p>IG: <a href="https://instagram.com/_its_sailesh_" target="_blank">_its_sailesh_</a></p>
+  </div>
 
   <script>
-    const canvas = document.getElementById('gameCanvas');
+    const canvas = document.getElementById('tetrisCanvas');
     const ctx = canvas.getContext('2d');
 
-    // Set canvas size for responsiveness
-    canvas.width = Math.min(window.innerWidth, 400);
-    canvas.height = Math.min(window.innerWidth, 400);
+    canvas.width = 240;
+    canvas.height = 400;
 
-    const tileSize = 20;
-    const rows = canvas.height / tileSize;
-    const cols = canvas.width / tileSize;
+    const ROWS = 20;
+    const COLS = 10;
+    const TILE_SIZE = canvas.width / COLS;
 
-    let snake = [{ x: 10, y: 10 }];
-    let direction = { x: 0, y: 0 };
-    let food = { x: Math.floor(Math.random() * cols), y: Math.floor(Math.random() * rows) };
-    let score = 0;
+    const colors = [
+      null, 'cyan', 'blue', 'orange', 'yellow', 'green', 'purple', 'red'
+    ];
 
-    function drawRect(x, y, color) {
-      ctx.fillStyle = color;
-      ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+    const tetrominoes = [
+      [],
+      [[1, 1, 1, 1]], // I
+      [[1, 0, 0], [1, 1, 1]], // J
+      [[0, 0, 1], [1, 1, 1]], // L
+      [[1, 1], [1, 1]], // O
+      [[0, 1, 1], [1, 1, 0]], // S
+      [[0, 1, 0], [1, 1, 1]], // T
+      [[1, 1, 0], [0, 1, 1]]  // Z
+    ];
+
+    let grid = createGrid(ROWS, COLS);
+    let currentPiece = createPiece();
+    let dropInterval = 500;
+    let lastTime = 0;
+
+    function createGrid(rows, cols) {
+      return Array.from({ length: rows }, () => Array(cols).fill(0));
     }
 
-    function update() {
-      const head = { x: snake[0].x + direction.x, y: snake[0].y + direction.y };
-      
-      // Check collision with walls or itself
-      if (
-        head.x < 0 ||
-        head.y < 0 ||
-        head.x >= cols ||
-        head.y >= rows ||
-        snake.some(segment => segment.x === head.x && segment.y === head.y)
-      ) {
-        alert(`Game Over! Score: ${score}`);
-        resetGame();
-        return;
+    function createPiece() {
+      const type = Math.floor(Math.random() * (tetrominoes.length - 1)) + 1;
+      return {
+        matrix: tetrominoes[type],
+        pos: { x: Math.floor(COLS / 2) - 1, y: 0 },
+        type: type
+      };
+    }
+
+    function drawGrid() {
+      ctx.fillStyle = '#eee';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      grid.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value !== 0) {
+            ctx.fillStyle = colors[value];
+            ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            ctx.strokeStyle = '#ccc';
+            ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+          }
+        });
+      });
+    }
+
+    function drawPiece(piece) {
+      piece.matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value !== 0) {
+            ctx.fillStyle = colors[piece.type];
+            ctx.fillRect((x + piece.pos.x) * TILE_SIZE, (y + piece.pos.y) * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            ctx.strokeStyle = '#ccc';
+            ctx.strokeRect((x + piece.pos.x) * TILE_SIZE, (y + piece.pos.y) * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+          }
+        });
+      });
+    }
+
+    function collide(grid, piece) {
+      const { matrix, pos } = piece;
+      for (let y = 0; y < matrix.length; y++) {
+        for (let x = 0; x < matrix[y].length; x++) {
+          if (
+            matrix[y][x] !== 0 &&
+            (grid[y + pos.y] && grid[y + pos.y][x + pos.x]) !== 0
+          ) {
+            return true;
+          }
+        }
       }
+      return false;
+    }
 
-      snake.unshift(head);
+    function merge(grid, piece) {
+      piece.matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value !== 0) {
+            grid[y + piece.pos.y][x + piece.pos.x] = piece.type;
+          }
+        });
+      });
+    }
 
-      // Check if the snake eats food
-      if (head.x === food.x && head.y === food.y) {
-        score++;
-        food = { x: Math.floor(Math.random() * cols), y: Math.floor(Math.random() * rows) };
-      } else {
-        snake.pop();
+    function dropPiece() {
+      currentPiece.pos.y++;
+      if (collide(grid, currentPiece)) {
+        currentPiece.pos.y--;
+        merge(grid, currentPiece);
+        currentPiece = createPiece();
+        grid = grid.filter(row => !row.every(cell => cell !== 0));
+        grid.unshift(...createGrid(grid.length - ROWS, COLS));
       }
     }
 
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Draw snake
-      snake.forEach((segment, index) => drawRect(segment.x, segment.y, index === 0 ? 'lime' : 'green'));
-
-      // Draw food
-      drawRect(food.x, food.y, 'red');
-
-      // Draw score
-      ctx.fillStyle = 'white';
-      ctx.font = '16px Arial';
-      ctx.fillText(`Score: ${score}`, 10, 20);
+    function rotatePiece(piece) {
+      piece.matrix = piece.matrix[0].map((_, i) => piece.matrix.map(row => row[i]).reverse());
     }
 
-    function gameLoop() {
-      update();
-      draw();
+    function gameLoop(time = 0) {
+      const deltaTime = time - lastTime;
+      if (deltaTime > dropInterval) {
+        dropPiece();
+        lastTime = time;
+      }
+      drawGrid();
+      drawPiece(currentPiece);
+      requestAnimationFrame(gameLoop);
     }
 
-    function resetGame() {
-      snake = [{ x: 10, y: 10 }];
-      direction = { x: 0, y: 0 };
-      food = { x: Math.floor(Math.random() * cols), y: Math.floor(Math.random() * rows) };
-      score = 0;
-    }
-
-    // Handle input for mobile and PC
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowUp' && direction.y === 0) direction = { x: 0, y: -1 };
-      if (e.key === 'ArrowDown' && direction.y === 0) direction = { x: 0, y: 1 };
-      if (e.key === 'ArrowLeft' && direction.x === 0) direction = { x: -1, y: 0 };
-      if (e.key === 'ArrowRight' && direction.x === 0) direction = { x: 1, y: 0 };
+    document.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft') {
+        currentPiece.pos.x--;
+        if (collide(grid, currentPiece)) currentPiece.pos.x++;
+      } else if (e.key === 'ArrowRight') {
+        currentPiece.pos.x++;
+        if (collide(grid, currentPiece)) currentPiece.pos.x--;
+      } else if (e.key === 'ArrowDown') {
+        dropPiece();
+      } else if (e.key === 'ArrowUp') {
+        rotatePiece(currentPiece);
+        if (collide(grid, currentPiece)) rotatePiece(currentPiece);
+      }
     });
 
-    canvas.addEventListener('touchstart', handleTouch);
-    let touchStartX = 0;
-    let touchStartY = 0;
-
-    function handleTouch(e) {
-      const touch = e.touches[0];
-      touchStartX = touch.clientX;
-      touchStartY = touch.clientY;
-
-      canvas.addEventListener('touchmove', handleSwipe);
-    }
-
-    function handleSwipe(e) {
-      const touch = e.touches[0];
-      const deltaX = touch.clientX - touchStartX;
-      const deltaY = touch.clientY - touchStartY;
-
-      if (Math.abs(deltaX) > Math.abs(deltaY)) {
-        if (deltaX > 0 && direction.x === 0) direction = { x: 1, y: 0 };
-        if (deltaX < 0 && direction.x === 0) direction = { x: -1, y: 0 };
-      } else {
-        if (deltaY > 0 && direction.y === 0) direction = { x: 0, y: 1 };
-        if (deltaY < 0 && direction.y === 0) direction = { x: 0, y: -1 };
-      }
-
-      canvas.removeEventListener('touchmove', handleSwipe);
-    }
-
-    setInterval(gameLoop, 200);
+    gameLoop();
   </script>
 </body>
 </html>
